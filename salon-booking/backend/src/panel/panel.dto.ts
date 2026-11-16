@@ -26,6 +26,10 @@ export class SettingsDto {
   @IsOptional() @IsInt() @Min(1) @Max(72) reminderHoursBefore?: number;
   @IsOptional() @IsInt() @Min(15) @Max(2880) confirmationTimeoutMinutes?: number;
   @IsOptional() @IsInt() @Min(5) @Max(240) waitlistOfferMinutes?: number;
+  @IsOptional() @IsBoolean() aiEnabled?: boolean;
+  @IsOptional() @IsString() @MaxLength(3000) assistantInfo?: string;
+  /** 0 apaga la invitación; el mínimo real es 21 días para no molestar. */
+  @IsOptional() @IsIn([0, 21, 30, 45, 60, 90]) winbackDays?: number;
 }
 
 export class ServiceDto {

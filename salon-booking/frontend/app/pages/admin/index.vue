@@ -100,7 +100,8 @@ const registerPayment = () =>
           <div class="muted small">
             {{ t.plan ? `Plan ${t.plan.name}` : 'Sin plan (prueba)' }} · vence {{ day(t.validUntil) }} ·
             {{ t.usage.professionals }} profesional(es) · {{ t.usage.customers }} cliente(s) ·
-            {{ t.usage.messagesThisMonth }}<span v-if="t.plan"> / {{ t.plan.monthlyMessageQuota }}</span> mensajes este mes
+            {{ t.usage.messagesThisMonth }}<span v-if="t.plan"> / {{ t.plan.monthlyMessageQuota }}</span> mensajes este mes ·
+            IA: {{ t.usage.aiRequestsThisMonth }}<span v-if="t.plan"> / {{ t.plan.monthlyAiQuota }}</span> respuestas ({{ Math.round(t.usage.aiTokensThisMonth / 1000) }} mil tokens)
           </div>
         </div>
         <div class="row">

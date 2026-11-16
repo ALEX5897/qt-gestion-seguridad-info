@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthUser, CurrentUser, Roles, TenantId } from '../auth/auth.decorators';
+import { AiUsageService } from '../ai/ai-usage.service';
+import { AssistantService } from '../ai/assistant.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { CreateStaffDto, SettingsDto, UpdateStaffDto } from './panel.dto';
@@ -20,6 +22,8 @@ export class AccountController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenants: TenantsService,
+    private readonly aiUsage: AiUsageService,
+    private readonly assistant: AssistantService,
   ) {}
 
   /** Datos de la sesión: usuario, local, estado de la suscripción. */
@@ -29,7 +33,7 @@ export class AccountController {
       where: { id: auth.sub },
       select: { id: true, name: true, email: true, role: true, tenantId: true },
     });
-    if (!user.tenantId) return { user, tenant: null, subscription: null };
+    if (!user.tenantId) return { user, tenant: null, subscription: null, ai: null };
     const tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: user.tenantId } });
     const sub = await this.prisma.subscription.findFirst({
       where: { tenantId: tenant.id },
@@ -37,6 +41,7 @@ export class AccountController {
       include: { plan: true },
     });
     const { serviceable, reason } = await this.tenants.isServiceable(tenant);
+    const quota = await this.aiUsage.assistantQuota(tenant.id);
     return {
       user,
       tenant,
@@ -46,6 +51,8 @@ export class AccountController {
         plan: sub?.plan.name ?? null,
         validUntil: sub?.currentPeriodEnd ?? tenant.trialEndsAt,
       },
+      // configured: la plataforma tiene la IA activada; used/limit: respuestas del asistente este mes.
+      ai: { configured: this.assistant.configured, used: quota.used, limit: quota.limit },
     };
   }
 

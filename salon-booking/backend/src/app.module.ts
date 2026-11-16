@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { AiModule } from './ai/ai.module';
 import { AuthModule } from './auth/auth.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PanelModule } from './panel/panel.module';
@@ -20,6 +21,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     NotificationsModule,
     TenantsModule,
     SchedulingModule,
+    AiModule,
     PanelModule,
     WhatsappModule,
   ],

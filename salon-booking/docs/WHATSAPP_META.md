@@ -76,6 +76,12 @@ Botones de respuesta rápida, en este orden: `Sí, confirmo` · `No podré ir`
 
 Botones de respuesta rápida, en este orden: `Lo quiero` · `No, gracias`
 
+**Invitación a volver** (categoría *Marketing*) → `META_TEMPLATE_WINBACK`
+
+> Hola {{1}} 👋 En {{2}} te extrañamos. ¿Te reservamos un espacio para tu próxima visita?
+
+Botones de respuesta rápida, en este orden: `Agendar cita` · `No recibir avisos`
+
 El sistema rellena las variables y asocia cada botón con la cita u oferta correspondiente. Si no
 configuras plantillas, se envía el mensaje normal con botones, que solo llega dentro de las 24 h.
 

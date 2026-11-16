@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Customer, Tenant } from '@prisma/client';
 import { DateTime } from 'luxon';
 import { dayLong, dayLongOf, isoDate, money, shortDay, time } from '../common/format';
+import { AssistantService } from '../ai/assistant.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { isoWeekday } from '../scheduling/availability';
@@ -60,6 +61,7 @@ export class BotService {
     private readonly booking: BookingService,
     private readonly waitlist: WaitlistService,
     private readonly notifications: NotificationsService,
+    private readonly assistant: AssistantService,
   ) {}
 
   async handle(input: BotInput): Promise<BotOutput> {
@@ -106,9 +108,27 @@ export class BotService {
         return this.joinWaitlist(input, arg1);
       case 'wlcancel':
         return this.leaveWaitlist(input, toId(arg1));
+      case 'promo':
+        if (arg1 === 'stop') return this.stopInvitations(input);
+        break;
     }
 
     if (msg.text && !GREETING.test(msg.text.trim()) && id === '') {
+      // Mensaje escrito libremente: responde el asistente con IA, si está disponible.
+      const ai = await this.assistant.reply({
+        tenant: input.tenant,
+        customer: input.customer,
+        text: msg.text,
+        now: input.now,
+      });
+      if (ai) {
+        return {
+          messages: ai.messages,
+          state: ai.humanTakeover ? 'HUMAN' : 'AI',
+          context: ai.context,
+          humanTakeover: ai.humanTakeover,
+        };
+      }
       return this.menu(input, 'No te entendí 🙈. Usa los botones para continuar:');
     }
     return this.menu(input);
@@ -636,6 +656,21 @@ export class BotService {
       input,
       'Entendido, no tomamos ese cupo. Sigues en la fila por si se libera otro horario. ¿Algo más?',
     );
+  }
+
+  /** El cliente no quiere recibir invitaciones a volver. Los avisos de sus citas siguen llegando. */
+  private async stopInvitations(input: BotInput): Promise<BotOutput> {
+    await this.prisma.customer.update({ where: { id: input.customer.id }, data: { marketingOptOut: true } });
+    return {
+      state: 'IDLE',
+      context: {},
+      messages: [
+        {
+          type: 'text',
+          text: 'Listo, no te enviaremos más invitaciones. Seguirás recibiendo los avisos de tus citas. Cuando quieras agendar, escríbenos. 🙂',
+        },
+      ],
+    };
   }
 
   // ───────────── utilidades ─────────────

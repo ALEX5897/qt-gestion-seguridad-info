@@ -60,7 +60,8 @@ Cliente WhatsApp ─► Meta Cloud API ─webhook─► API NestJS ─► MySQL
 | 5 | Límite de profesionales por plan, consumo de mensajes, vencimiento con días de gracia | ✅ |
 | 5b | **Cobro automático con pasarela** (PayPhone/Kushki) | ⏳ requiere cuenta de comercio |
 | 6 | **Piloto con 2–3 locales reales** | ⏳ requiere números reales verificados en Meta |
-| 7 | Reportes, anticipos, encuestas, IA conversacional, notificaciones push | futuro |
+| 7a | **IA**: asistente conversacional del bot, indicadores y consejos para el dueño, invitación a volver | ✅ (probado con modelo simulado; falta validar con el modelo real) |
+| 7b | Anticipos, encuestas, notificaciones push | futuro |
 
 ## 4. Reglas configurables por local
 
@@ -90,6 +91,15 @@ Una cita reservada con menos anticipación que `reminderHoursBefore` nace confir
   datos de un cliente que lo solicite.
 
 ## 7. Pendientes conocidos
+
+- **IA sin validar con el modelo real.** La integración (SDK, herramientas, errores, cupos) está
+  probada contra un servidor que imita la API. Falta conversar con el modelo real para ajustar el
+  tono y las instrucciones, y medir el costo por conversación antes de fijar los cupos de cada plan.
+- **Costo de la IA.** Cada respuesta del asistente es una llamada de pago a Claude. El modelo se
+  elige con `AI_MODEL`; conviene medir con conversaciones reales si un modelo más económico mantiene
+  la calidad.
+- Las invitaciones a volver, fuera de las 24 h, requieren una plantilla de categoría *Marketing*
+  (`META_TEMPLATE_WINBACK`), que Meta cobra aparte.
 
 - **Antes de producción**: cambiar contraseñas del seed y `JWT_SECRET`; usar migraciones con
   historial (`prisma migrate`) en lugar de `db push`; restringir CORS al dominio del panel;

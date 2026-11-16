@@ -4,6 +4,8 @@ export interface Me {
   user: SessionUser;
   tenant: Record<string, any> | null;
   subscription: { serviceable: boolean; reason: string; plan: string | null; validUntil: string | null } | null;
+  /** configured: la plataforma tiene IA; used/limit: respuestas del asistente este mes. */
+  ai: { configured: boolean; used: number; limit: number } | null;
 }
 
 const TOKEN_KEY = 'agenda.token';

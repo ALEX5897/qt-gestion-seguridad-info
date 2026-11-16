@@ -35,9 +35,10 @@ async function open(s: Section) {
   }
   if (s === 'settings') {
     const t = me.value!.tenant!;
-    for (const k of ['name', 'address', 'slotStepMinutes', 'minAdvanceMinutes', 'maxAdvanceDays', 'reminderHoursBefore', 'confirmationTimeoutMinutes', 'waitlistOfferMinutes']) {
+    for (const k of ['name', 'address', 'slotStepMinutes', 'minAdvanceMinutes', 'maxAdvanceDays', 'reminderHoursBefore', 'confirmationTimeoutMinutes', 'waitlistOfferMinutes', 'assistantInfo', 'winbackDays']) {
       settings[k] = t[k] ?? '';
     }
+    settings.aiEnabled = t.aiEnabled;
   }
   if (s === 'staff') staff.value = await api('/staff');
 }
@@ -75,7 +76,7 @@ const removeOff = (id: number) =>
   });
 const saveSettings = () =>
   run(async () => {
-    await api('/tenant/settings', { method: 'PATCH', body: { ...settings, address: settings.address || undefined } });
+    await api('/tenant/settings', { method: 'PATCH', body: { ...settings, address: settings.address || undefined, assistantInfo: settings.assistantInfo ?? '' } });
     await loadMe();
     saved.value = true;
   });
@@ -115,8 +116,13 @@ const TITLES: Record<Section, string> = { menu: '', waitlist: 'Fila de espera', 
       <button class="card" @click="open('waitlist')"><strong>⏳ Fila de espera</strong><div class="muted small">Clientes que esperan un cupo</div></button>
       <button class="card" @click="open('timeoff')"><strong>🚫 Bloqueos</strong><div class="muted small">Feriados, vacaciones y ausencias</div></button>
       <template v-if="isOwner">
+        <h3>Crecer</h3>
+        <NuxtLink to="/consejos" class="card" style="display: block; color: inherit">
+          <strong>💡 Consejos del negocio</strong>
+          <div class="muted small">Indicadores del mes y recomendaciones con IA</div>
+        </NuxtLink>
         <h3>Configuración</h3>
-        <button class="card" @click="open('settings')"><strong>⚙️ Ajustes del local</strong><div class="muted small">Reglas de reserva, recordatorios y fila de espera</div></button>
+        <button class="card" @click="open('settings')"><strong>⚙️ Ajustes del local</strong><div class="muted small">Reservas, recordatorios, asistente con IA e invitaciones</div></button>
         <button class="card" @click="open('staff')"><strong>🧑‍💼 Personal</strong><div class="muted small">Cuentas para tu equipo</div></button>
       </template>
       <h3>Cuenta</h3>
@@ -230,6 +236,27 @@ const TITLES: Record<Section, string> = { menu: '', waitlist: 'Fila de espera', 
           <label for="t-wl">Tiempo para aceptar un cupo (min)</label>
           <input id="t-wl" v-model.number="settings.waitlistOfferMinutes" type="number" min="5" max="240" required />
         </div>
+        <h3>Asistente con IA</h3>
+        <label class="check"><input v-model="settings.aiEnabled" type="checkbox" :disabled="!me?.ai?.configured" /> Responder con IA los mensajes escritos</label>
+        <p v-if="!me?.ai?.configured" class="muted small">La IA no está activada en esta plataforma. El bot atiende con botones.</p>
+        <p v-else class="muted small">
+          Entiende preguntas como "¿tienen algo mañana en la tarde?", recomienda servicios y propone horarios reales.
+          Nunca reserva sola: el cliente siempre confirma con un botón.
+          Este mes: {{ me.ai.used }} de {{ me.ai.limit }} respuestas.
+        </p>
+        <div class="field">
+          <label for="t-info">Lo que el asistente debe saber de tu local</label>
+          <textarea id="t-info" v-model="settings.assistantInfo" maxlength="3000" placeholder="Formas de pago, parqueadero, promociones vigentes, qué incluye cada servicio…" />
+        </div>
+        <h3>Recuperar clientes</h3>
+        <div class="field">
+          <label for="t-winback">Invitar a volver a quien no viene hace</label>
+          <select id="t-winback" v-model.number="settings.winbackDays">
+            <option :value="0">No enviar invitaciones</option>
+            <option v-for="d in [21, 30, 45, 60, 90]" :key="d" :value="d">{{ d }} días</option>
+          </select>
+        </div>
+        <p class="muted small">Se envía un solo mensaje por ciclo, de día, y el cliente puede pedir no recibir más. Fuera de las 24 h de su último mensaje, WhatsApp exige una plantilla aprobada y cobra el envío.</p>
         <p v-if="saved" class="chip ok" role="status">Cambios guardados</p>
         <button class="btn primary block" :disabled="busy">Guardar ajustes</button>
       </form>

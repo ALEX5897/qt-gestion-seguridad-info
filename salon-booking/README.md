@@ -8,6 +8,9 @@ atiendan reservas por WhatsApp de forma automática y controlen su agenda desde 
 - El bot muestra servicios, profesionales, días y horarios libres; reserva, reprograma y cancela.
 - Antes de la cita pide **confirmar la asistencia**. Sin respuesta, la cita se cancela y el cupo se
   ofrece a la **fila de espera**, a un cliente a la vez.
+- Un **asistente con IA** (Claude) entiende mensajes escritos libremente, recomienda servicios y
+  propone horarios reales; además genera **consejos para el dueño** a partir de sus indicadores.
+- **Invitación automática a volver** para clientes que llevan tiempo sin venir.
 - El dueño maneja todo desde un **panel web instalable en el teléfono** (PWA).
 - El **administrador general** da de alta locales, registra pagos y habilita o suspende cuentas.
 
@@ -32,6 +35,27 @@ ajustes de reglas · cuentas para el personal · avisos (campana).
 
 Agendar · mis citas · reprogramar · cancelar · confirmar asistencia · anotarse y salir de la fila
 de espera · aceptar o rechazar un cupo liberado · pedir hablar con una persona.
+
+## Inteligencia artificial
+
+Es opcional: sin `ANTHROPIC_API_KEY` el sistema funciona igual, solo con botones.
+
+| Función | Qué hace |
+|---|---|
+| Asistente del bot | Responde mensajes libres ("¿tienen algo mañana en la tarde?", "¿cuánto cuesta el tinte?"), recomienda el servicio adecuado, consulta la agenda real y muestra horarios como botones. Usa la información que el dueño escribe en Ajustes (pagos, parqueadero, promociones). |
+| Consejos del negocio | Indicadores de 30 días (ocupación, inasistencias, ingresos, clientes inactivos) y de 3 a 5 recomendaciones concretas generadas con IA. |
+| Invitación a volver | Mensaje automático a quien no viene hace N días (no usa IA). Una vez por ciclo, de día, con opción de darse de baja. |
+
+Decisiones de seguridad y costo:
+
+- **La IA nunca reserva, cambia ni cancela.** Solo hace aparecer botones; la acción ocurre cuando el
+  cliente los pulsa y pasa por las validaciones normales. Los horarios que propone se verifican
+  contra la agenda antes de mostrarse.
+- Si la IA falla, declina o se agota el cupo, el cliente recibe el menú de botones de siempre.
+- Cupo mensual de respuestas por plan (`Plan.monthlyAiQuota`; 100 en período de prueba). El consumo
+  por local se ve en el panel del administrador.
+- Los saludos y los botones no consumen IA; solo los mensajes escritos libremente.
+- Cada local puede apagar el asistente en Ajustes; `AI_ENABLED=false` lo apaga en toda la plataforma.
 
 ## Puesta en marcha
 
@@ -101,9 +125,15 @@ cd backend && npm test
 # WHATSAPP_PROVIDER=console AUTOMATION_ENABLED=false
 npm run test:e2e
 
+# Funciones de IA contra un Claude simulado (sin clave ni costo):
+#   node test/fake-claude.mjs &   y el servidor además con
+#   ANTHROPIC_API_KEY=test ANTHROPIC_BASE_URL=http://localhost:4010
+npm run test:e2e:ai
+
 # De interfaz, en navegador (requiere Playwright): con lo anterior en marcha
 cd ../frontend && npm run generate && node test/serve.cjs &   # sirve el panel en :3000
 node test/ui.cjs
+node test/ui-ai.cjs      # con el Claude simulado en marcha
 ```
 
 ## Publicar el panel
@@ -114,4 +144,5 @@ Para que el teléfono ofrezca "instalar", el panel debe servirse por HTTPS.
 
 ## Stack
 
-NestJS 11 · Prisma 7 (adaptador MariaDB) · MySQL 8 · Luxon · Nuxt 4 / Vue 3 · WhatsApp Cloud API.
+NestJS 11 · Prisma 7 (adaptador MariaDB) · MySQL 8 · Luxon · Nuxt 4 / Vue 3 · WhatsApp Cloud API ·
+Claude (SDK oficial de Anthropic).

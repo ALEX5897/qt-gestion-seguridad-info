@@ -13,9 +13,30 @@ const h = (hh: number, mm = 0) => hh * 60 + mm;
 
 async function main() {
   for (const plan of [
-    { code: 'BASICO', name: 'Básico', priceCents: 1500, maxProfessionals: 2, monthlyMessageQuota: 500 },
-    { code: 'PRO', name: 'Profesional', priceCents: 3000, maxProfessionals: 6, monthlyMessageQuota: 2000 },
-    { code: 'PREMIUM', name: 'Premium', priceCents: 5000, maxProfessionals: 20, monthlyMessageQuota: 6000 },
+    {
+      code: 'BASICO',
+      name: 'Básico',
+      priceCents: 1500,
+      maxProfessionals: 2,
+      monthlyMessageQuota: 500,
+      monthlyAiQuota: 300,
+    },
+    {
+      code: 'PRO',
+      name: 'Profesional',
+      priceCents: 3000,
+      maxProfessionals: 6,
+      monthlyMessageQuota: 2000,
+      monthlyAiQuota: 1000,
+    },
+    {
+      code: 'PREMIUM',
+      name: 'Premium',
+      priceCents: 5000,
+      maxProfessionals: 20,
+      monthlyMessageQuota: 6000,
+      monthlyAiQuota: 3000,
+    },
   ]) {
     await prisma.plan.upsert({ where: { code: plan.code }, create: plan, update: plan });
   }
@@ -38,6 +59,8 @@ async function main() {
       slug: 'demo',
       whatsappNumber: '593990000001',
       address: 'Av. Amazonas y Naciones Unidas, Quito',
+      assistantInfo:
+        'Aceptamos efectivo, transferencia y tarjeta. Hay parqueadero gratuito para clientes. No atendemos domingos. Los tintes incluyen lavado y secado.',
       status: 'TRIAL',
       trialEndsAt: new Date(Date.now() + 30 * 86_400_000),
       users: {

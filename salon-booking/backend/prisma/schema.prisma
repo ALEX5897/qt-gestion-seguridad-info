@@ -32,6 +32,7 @@ model Plan {
   priceCents          Int // precio mensual en centavos de USD
   maxProfessionals    Int
   monthlyMessageQuota Int // mensajes salientes incluidos por mes
+  monthlyAiQuota      Int            @default(300) // respuestas del asistente de IA incluidas por mes
   active              Boolean        @default(true)
   subscriptions       Subscription[]
 }
@@ -60,6 +61,11 @@ model Tenant {
   confirmationTimeoutMinutes Int @default(240) // sin respuesta en este tiempo → se cancela
   waitlistOfferMinutes       Int @default(15) // tiempo para aceptar un cupo liberado
 
+  // Inteligencia artificial y crecimiento
+  aiEnabled     Boolean @default(true) // el asistente responde mensajes escritos libremente
+  assistantInfo String? @db.Text // lo que el dueño quiere que el asistente sepa (parqueo, pagos, promociones)
+  winbackDays   Int     @default(0) // invitar a volver tras N días sin visita (0 = apagado)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -74,6 +80,8 @@ model Tenant {
   conversations Conversation[]
   messages      MessageLog[]
   notifications Notification[]
+  aiUsage       AiUsage[]
+  insights      Insight[]
 }
 
 model Subscription {
@@ -214,15 +222,17 @@ model TimeOff {
 // ───────────────────────── Clientes y citas ─────────────────────────
 
 model Customer {
-  id          Int       @id @default(autoincrement())
-  tenantId    Int
-  phone       String // E.164 sin "+"
-  name        String?
-  optInAt     DateTime? // consentimiento para recibir mensajes (LOPDP)
-  noShowCount Int       @default(0)
-  blocked     Boolean   @default(false)
-  notes       String?   @db.Text
-  createdAt   DateTime  @default(now())
+  id              Int       @id @default(autoincrement())
+  tenantId        Int
+  phone           String // E.164 sin "+"
+  name            String?
+  optInAt         DateTime? // consentimiento para recibir mensajes (LOPDP)
+  noShowCount     Int       @default(0)
+  blocked         Boolean   @default(false)
+  marketingOptOut Boolean   @default(false) // pidió no recibir invitaciones
+  lastWinbackAt   DateTime?
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now())
 
   tenant       Tenant          @relation(fields: [tenantId], references: [id])
   appointments Appointment[]
@@ -385,6 +395,40 @@ model Notification {
   body      String    @db.Text
   readAt    DateTime?
   createdAt DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt])
+}
+
+// ───────────────────────── Inteligencia artificial ─────────────────────────
+
+enum AiUsageKind {
+  ASSISTANT // respuestas del bot a mensajes libres
+  INSIGHTS // consejos para el dueño
+}
+
+// Consumo mensual de IA por local: controla el cupo del plan y el costo.
+model AiUsage {
+  id           Int         @id @default(autoincrement())
+  tenantId     Int
+  month        String // YYYY-MM
+  kind         AiUsageKind
+  requests     Int         @default(0)
+  inputTokens  Int         @default(0)
+  outputTokens Int         @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, month, kind])
+}
+
+// Último análisis con consejos generado para el dueño.
+model Insight {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  payload   Json
+  createdAt DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 

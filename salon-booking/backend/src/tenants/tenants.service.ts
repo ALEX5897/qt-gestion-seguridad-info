@@ -28,13 +28,23 @@ export class TenantsService {
         const messagesThisMonth = await this.prisma.messageLog.count({
           where: { tenantId: t.id, direction: 'OUT', createdAt: { gte: monthStart } },
         });
+        const ai = await this.prisma.aiUsage.aggregate({
+          where: { tenantId: t.id, month: now.toISOString().slice(0, 7) },
+          _sum: { requests: true, inputTokens: true, outputTokens: true },
+        });
         return {
           ...t,
           owner: users[0] ?? null,
           plan: sub?.plan ?? null,
           validUntil: sub?.currentPeriodEnd ?? t.trialEndsAt,
           ...checkServiceability(t, sub, now),
-          usage: { professionals: _count.professionals, customers: _count.customers, messagesThisMonth },
+          usage: {
+            professionals: _count.professionals,
+            customers: _count.customers,
+            messagesThisMonth,
+            aiRequestsThisMonth: ai._sum.requests ?? 0,
+            aiTokensThisMonth: (ai._sum.inputTokens ?? 0) + (ai._sum.outputTokens ?? 0),
+          },
         };
       }),
     );

@@ -100,3 +100,11 @@ table { width: 100%; border-collapse: collapse; }
 /* Mayúscula solo en la primera letra (fechas en español). */
 .cap { display: inline-block; }
 .cap::first-letter { text-transform: uppercase; }
+
+/* Indicadores */
+.tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+@media (min-width: 560px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 0.7rem 0.8rem; }
+.tile b { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--primary); border-radius: 5px; }
