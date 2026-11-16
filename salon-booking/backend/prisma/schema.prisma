@@ -1,0 +1,392 @@
+// Esquema de datos de la plataforma de agendamiento para peluquerías y estéticas.
+// Multi-inquilino: cada local (Tenant) es dueño de sus datos y toda consulta
+// del panel debe filtrar por tenantId.
+// Las fechas se guardan en UTC; la zona horaria vive en Tenant.timezone.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ───────────────────────── Suscripciones ─────────────────────────
+
+enum TenantStatus {
+  TRIAL // período de prueba
+  ACTIVE // suscripción vigente (sujeta a fecha de vencimiento + días de gracia)
+  SUSPENDED // deshabilitado por el administrador general
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+model Plan {
+  id                  Int            @id @default(autoincrement())
+  code                String         @unique
+  name                String
+  priceCents          Int // precio mensual en centavos de USD
+  maxProfessionals    Int
+  monthlyMessageQuota Int // mensajes salientes incluidos por mes
+  active              Boolean        @default(true)
+  subscriptions       Subscription[]
+}
+
+model Tenant {
+  id          Int          @id @default(autoincrement())
+  name        String
+  slug        String       @unique
+  status      TenantStatus @default(TRIAL)
+  timezone    String       @default("America/Guayaquil")
+  address     String?
+  trialEndsAt DateTime?
+
+  // Número de WhatsApp asignado al local, formato E.164 sin "+" (ej. 593991234567).
+  // Es la clave para saber qué local atiende un mensaje entrante.
+  whatsappNumber  String  @unique
+  // Identificador del número en Meta Cloud API (phone_number_id). Opcional
+  // porque otros proveedores identifican el número solo por su teléfono.
+  waPhoneNumberId String? @unique
+
+  // Reglas de agenda configurables por el dueño
+  slotStepMinutes            Int @default(15) // cada cuánto se ofrecen horarios
+  minAdvanceMinutes          Int @default(60) // anticipación mínima para reservar
+  maxAdvanceDays             Int @default(30) // hasta cuántos días hacia adelante
+  reminderHoursBefore        Int @default(24) // cuándo pedir confirmación
+  confirmationTimeoutMinutes Int @default(240) // sin respuesta en este tiempo → se cancela
+  waitlistOfferMinutes       Int @default(15) // tiempo para aceptar un cupo liberado
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+  users         User[]
+  professionals Professional[]
+  services      Service[]
+  customers     Customer[]
+  appointments  Appointment[]
+  timeOffs      TimeOff[]
+  waitlist      WaitlistEntry[]
+  conversations Conversation[]
+  messages      MessageLog[]
+  notifications Notification[]
+}
+
+model Subscription {
+  id                 Int                @id @default(autoincrement())
+  tenantId           Int
+  planId             Int
+  status             SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  graceDays          Int                @default(5)
+  createdAt          DateTime           @default(now())
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  plan     Plan      @relation(fields: [planId], references: [id])
+  payments Payment[]
+
+  @@index([tenantId])
+}
+
+// En Ecuador se empieza registrando pagos manuales (transferencia/depósito);
+// luego se integra una pasarela (PayPhone, Kushki, Datafast...).
+model Payment {
+  id             Int      @id @default(autoincrement())
+  subscriptionId Int
+  amountCents    Int
+  currency       String   @default("USD")
+  method         String // TRANSFER, CASH, CARD, PAYPHONE...
+  reference      String?
+  paidAt         DateTime
+  recordedById   Int?
+  createdAt      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+}
+
+// ───────────────────────── Usuarios del panel ─────────────────────────
+
+enum UserRole {
+  SUPERADMIN // administrador general de la plataforma
+  OWNER // dueño del local
+  STAFF // profesional / recepción
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole
+  tenantId     Int? // null solo para SUPERADMIN
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id])
+  professional Professional?
+}
+
+// ───────────────────────── Catálogo del local ─────────────────────────
+
+model Professional {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  name      String
+  phone     String?
+  color     String? // color en la agenda
+  active    Boolean  @default(true)
+  userId    Int?     @unique
+  createdAt DateTime @default(now())
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [id])
+  user         User?                 @relation(fields: [userId], references: [id])
+  workingHours WorkingHours[]
+  services     ProfessionalService[]
+  appointments Appointment[]
+  timeOffs     TimeOff[]
+
+  @@index([tenantId])
+}
+
+// Varios rangos por día permiten modelar descansos (ej. 09:00-13:00 y 14:00-19:00).
+model WorkingHours {
+  id             Int @id @default(autoincrement())
+  professionalId Int
+  weekday        Int // 1 = lunes ... 7 = domingo (ISO)
+  startMinute    Int // minutos desde la medianoche local
+  endMinute      Int
+
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@index([professionalId, weekday])
+}
+
+model Service {
+  id              Int      @id @default(autoincrement())
+  tenantId        Int
+  name            String
+  durationMinutes Int
+  bufferMinutes   Int      @default(0) // limpieza/preparación posterior
+  priceCents      Int?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  tenant        Tenant                @relation(fields: [tenantId], references: [id])
+  professionals ProfessionalService[]
+  appointments  Appointment[]
+  waitlist      WaitlistEntry[]
+
+  @@index([tenantId])
+}
+
+// Qué servicios hace cada profesional y, opcionalmente, con qué duración propia.
+model ProfessionalService {
+  professionalId  Int
+  serviceId       Int
+  durationMinutes Int?
+
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  service      Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([professionalId, serviceId])
+}
+
+// Bloqueos: vacaciones, feriados, ausencias. professionalId null = todo el local.
+model TimeOff {
+  id             Int      @id @default(autoincrement())
+  tenantId       Int
+  professionalId Int?
+  startsAt       DateTime
+  endsAt         DateTime
+  reason         String?
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  professional Professional? @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, startsAt])
+}
+
+// ───────────────────────── Clientes y citas ─────────────────────────
+
+model Customer {
+  id          Int       @id @default(autoincrement())
+  tenantId    Int
+  phone       String // E.164 sin "+"
+  name        String?
+  optInAt     DateTime? // consentimiento para recibir mensajes (LOPDP)
+  noShowCount Int       @default(0)
+  blocked     Boolean   @default(false)
+  notes       String?   @db.Text
+  createdAt   DateTime  @default(now())
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id])
+  appointments Appointment[]
+  waitlist     WaitlistEntry[]
+  conversation Conversation?
+
+  @@unique([tenantId, phone])
+}
+
+enum AppointmentStatus {
+  PENDING // reservada, esperando confirmación de asistencia
+  CONFIRMED // el cliente confirmó
+  COMPLETED // atendida
+  CANCELLED
+  NO_SHOW // no se presentó
+}
+
+enum AppointmentSource {
+  WHATSAPP
+  MANUAL // registrada por el local desde el panel
+}
+
+enum CancelReason {
+  CUSTOMER // el cliente canceló
+  NO_CONFIRMATION // no respondió a la confirmación
+  BUSINESS // el local canceló
+}
+
+model Appointment {
+  id                      Int               @id @default(autoincrement())
+  tenantId                Int
+  customerId              Int
+  professionalId          Int
+  serviceId               Int
+  startsAt                DateTime
+  endsAt                  DateTime // incluye el buffer del servicio
+  status                  AppointmentStatus @default(PENDING)
+  source                  AppointmentSource @default(WHATSAPP)
+  confirmationRequestedAt DateTime?
+  confirmedAt             DateTime?
+  cancelledAt             DateTime?
+  cancelReason            CancelReason?
+  notes                   String?           @db.Text
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  customer     Customer     @relation(fields: [customerId], references: [id])
+  professional Professional @relation(fields: [professionalId], references: [id])
+  service      Service      @relation(fields: [serviceId], references: [id])
+
+  @@index([professionalId, startsAt])
+  @@index([tenantId, startsAt])
+  @@index([status, startsAt])
+}
+
+// ───────────────────────── Fila de espera ─────────────────────────
+
+enum WaitlistStatus {
+  WAITING
+  OFFERED // tiene una oferta vigente
+  BOOKED // aceptó un cupo
+  EXPIRED
+  CANCELLED
+}
+
+model WaitlistEntry {
+  id             Int            @id @default(autoincrement())
+  tenantId       Int
+  customerId     Int
+  serviceId      Int
+  professionalId Int? // null = cualquier profesional
+  date           DateTime       @db.Date // día deseado (fecha local)
+  fromMinute     Int? // ventana horaria preferida (opcional)
+  toMinute       Int?
+  status         WaitlistStatus @default(WAITING)
+  createdAt      DateTime       @default(now())
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id])
+  customer Customer        @relation(fields: [customerId], references: [id])
+  service  Service         @relation(fields: [serviceId], references: [id])
+  offers   WaitlistOffer[]
+
+  @@index([tenantId, date, status])
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+// Los cupos liberados se ofrecen de uno en uno, por orden de llegada,
+// con un tiempo límite para aceptar (Tenant.waitlistOfferMinutes).
+model WaitlistOffer {
+  id             Int         @id @default(autoincrement())
+  entryId        Int
+  professionalId Int
+  startsAt       DateTime
+  endsAt         DateTime // fin de la ocupación (con buffer); reserva el cupo mientras la oferta está vigente
+  // Intervalo que se liberó y originó la oferta; permite ofrecerlo al siguiente de la fila.
+  freedStart     DateTime
+  freedEnd       DateTime
+  expiresAt      DateTime
+  status         OfferStatus @default(PENDING)
+  createdAt      DateTime    @default(now())
+
+  entry WaitlistEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([status, expiresAt])
+  @@index([professionalId, startsAt])
+}
+
+// ───────────────────────── Mensajería ─────────────────────────
+
+model Conversation {
+  id            Int      @id @default(autoincrement())
+  tenantId      Int
+  customerId    Int      @unique
+  state         String   @default("IDLE") // estado de la máquina de diálogo
+  context       Json? // datos parciales (servicio elegido, fecha, etc.)
+  humanTakeover Boolean  @default(false) // el local pausó el bot
+  lastMessageAt DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+model MessageLog {
+  id                Int              @id @default(autoincrement())
+  tenantId          Int
+  direction         MessageDirection
+  customerPhone     String
+  // id del mensaje en el proveedor; único para descartar webhooks repetidos
+  providerMessageId String?          @unique
+  type              String // text, interactive, template...
+  body              String           @db.Text
+  createdAt         DateTime         @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt])
+}
+
+// ───────────────────────── Avisos para el local ─────────────────────────
+
+model Notification {
+  id        Int       @id @default(autoincrement())
+  tenantId  Int
+  type      String // BOOKED, CANCELLED, NO_CONFIRMATION, HUMAN_REQUEST, WAITLIST_BOOKED, MESSAGE
+  title     String
+  body      String    @db.Text
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt])
+}

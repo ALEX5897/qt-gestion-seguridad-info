@@ -1,0 +1,259 @@
+<script setup lang="ts">
+// Fila de espera, bloqueos de agenda, ajustes del local, personal y suscripción.
+const api = useApi();
+const { me, isOwner, loadMe, logout } = useSession();
+const { dateTime, labelOf, isoDate, zonedToIso } = useDates();
+
+type Section = 'menu' | 'waitlist' | 'timeoff' | 'settings' | 'staff';
+const section = ref<Section>('menu');
+const busy = ref(false);
+const error = ref('');
+const saved = ref(false);
+
+// ───── Fila de espera ─────
+const waitlist = ref<any[]>([]);
+// ───── Bloqueos ─────
+const timeOffs = ref<any[]>([]);
+const pros = ref<any[]>([]);
+const off = reactive({ professionalId: null as number | null, from: '', to: '', reason: '' });
+// ───── Ajustes ─────
+const settings = reactive<Record<string, any>>({});
+// ───── Personal ─────
+const staff = ref<any[]>([]);
+const newStaff = reactive({ name: '', email: '', password: '' });
+
+async function open(s: Section) {
+  section.value = s;
+  error.value = '';
+  saved.value = false;
+  if (s === 'waitlist') waitlist.value = await api('/waitlist');
+  if (s === 'timeoff') {
+    // Los valores iniciales van antes de cargar datos para no pisar lo que el usuario escriba.
+    const today = isoDate();
+    Object.assign(off, { professionalId: null, from: `${today}T09:00`, to: `${today}T19:00`, reason: '' });
+    [timeOffs.value, pros.value] = await Promise.all([api('/time-offs'), api('/professionals')]);
+  }
+  if (s === 'settings') {
+    const t = me.value!.tenant!;
+    for (const k of ['name', 'address', 'slotStepMinutes', 'minAdvanceMinutes', 'maxAdvanceDays', 'reminderHoursBefore', 'confirmationTimeoutMinutes', 'waitlistOfferMinutes']) {
+      settings[k] = t[k] ?? '';
+    }
+  }
+  if (s === 'staff') staff.value = await api('/staff');
+}
+
+async function run(fn: () => Promise<void>) {
+  busy.value = true;
+  error.value = '';
+  saved.value = false;
+  try {
+    await fn();
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    busy.value = false;
+  }
+}
+const removeWait = (id: number) =>
+  run(async () => {
+    await api(`/waitlist/${id}/remove`, { method: 'POST' });
+    waitlist.value = await api('/waitlist');
+  });
+const addOff = () =>
+  run(async () => {
+    await api('/time-offs', {
+      method: 'POST',
+      body: { professionalId: off.professionalId, startsAt: zonedToIso(off.from), endsAt: zonedToIso(off.to), reason: off.reason || undefined },
+    });
+    timeOffs.value = await api('/time-offs');
+    off.reason = '';
+  });
+const removeOff = (id: number) =>
+  run(async () => {
+    await api(`/time-offs/${id}`, { method: 'DELETE' });
+    timeOffs.value = await api('/time-offs');
+  });
+const saveSettings = () =>
+  run(async () => {
+    await api('/tenant/settings', { method: 'PATCH', body: { ...settings, address: settings.address || undefined } });
+    await loadMe();
+    saved.value = true;
+  });
+const addStaff = () =>
+  run(async () => {
+    await api('/staff', { method: 'POST', body: { ...newStaff } });
+    Object.assign(newStaff, { name: '', email: '', password: '' });
+    staff.value = await api('/staff');
+  });
+const toggleStaff = (u: any) =>
+  run(async () => {
+    await api(`/staff/${u.id}`, { method: 'PATCH', body: { active: !u.active } });
+    staff.value = await api('/staff');
+  });
+
+const sub = computed(() => me.value?.subscription);
+const TITLES: Record<Section, string> = { menu: '', waitlist: 'Fila de espera', timeoff: 'Bloqueos de agenda', settings: 'Ajustes del local', staff: 'Personal' };
+</script>
+
+<template>
+  <div>
+    <template v-if="section === 'menu'">
+      <div class="card">
+        <div class="row">
+          <div class="grow">
+            <strong>Suscripción</strong>
+            <div class="muted small">
+              {{ sub?.plan ? `Plan ${sub.plan}` : 'Período de prueba' }}
+              <span v-if="sub?.validUntil"> · vence el {{ labelOf(isoDate(sub.validUntil)) }}</span>
+            </div>
+          </div>
+          <span class="chip" :class="sub?.serviceable ? 'ok' : 'danger'">{{ sub?.serviceable ? 'Activa' : 'Inactiva' }}</span>
+        </div>
+        <p class="muted small" style="margin: 0.4rem 0 0">WhatsApp del local: +{{ me?.tenant?.whatsappNumber }}</p>
+      </div>
+      <h3>Agenda</h3>
+      <button class="card" @click="open('waitlist')"><strong>⏳ Fila de espera</strong><div class="muted small">Clientes que esperan un cupo</div></button>
+      <button class="card" @click="open('timeoff')"><strong>🚫 Bloqueos</strong><div class="muted small">Feriados, vacaciones y ausencias</div></button>
+      <template v-if="isOwner">
+        <h3>Configuración</h3>
+        <button class="card" @click="open('settings')"><strong>⚙️ Ajustes del local</strong><div class="muted small">Reglas de reserva, recordatorios y fila de espera</div></button>
+        <button class="card" @click="open('staff')"><strong>🧑‍💼 Personal</strong><div class="muted small">Cuentas para tu equipo</div></button>
+      </template>
+      <h3>Cuenta</h3>
+      <div class="card">
+        <strong>{{ me?.user.name }}</strong>
+        <div class="muted small">{{ me?.user.email }}</div>
+      </div>
+      <button class="btn block" style="margin-top: 0.75rem" @click="logout">Cerrar sesión</button>
+    </template>
+
+    <template v-else>
+      <div class="row" style="margin-bottom: 0.75rem">
+        <button class="btn sm" @click="section = 'menu'">‹ Volver</button>
+        <h2 style="margin: 0">{{ TITLES[section] }}</h2>
+      </div>
+      <p v-if="error" class="error" role="alert" style="margin-bottom: 0.75rem">{{ error }}</p>
+
+      <template v-if="section === 'waitlist'">
+        <p v-if="!waitlist.length" class="empty">Nadie está en fila de espera.</p>
+        <div v-for="w in waitlist" :key="w.id" class="card">
+          <div class="row">
+            <div class="grow">
+              <strong>{{ w.customer.name || '+' + w.customer.phone }}</strong>
+              <div class="muted small">{{ w.service.name }} · <span class="cap">{{ labelOf(w.date.slice(0, 10)) }}</span></div>
+            </div>
+            <span v-if="w.status === 'OFFERED'" class="chip warn">Cupo ofrecido</span>
+            <button class="btn sm danger" :disabled="busy" @click="removeWait(w.id)">Quitar</button>
+          </div>
+        </div>
+      </template>
+
+      <template v-if="section === 'timeoff'">
+        <form class="card stack" @submit.prevent="addOff">
+          <div class="field">
+            <label for="o-pro">¿Quién?</label>
+            <select id="o-pro" v-model="off.professionalId">
+              <option :value="null">Todo el local</option>
+              <option v-for="p in pros.filter((x) => x.active)" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+          </div>
+          <div class="cols">
+            <div class="field">
+              <label for="o-from">Desde</label>
+              <input id="o-from" v-model="off.from" type="datetime-local" required />
+            </div>
+            <div class="field" style="margin-top: 0">
+              <label for="o-to">Hasta</label>
+              <input id="o-to" v-model="off.to" type="datetime-local" required />
+            </div>
+          </div>
+          <div class="field">
+            <label for="o-reason">Motivo (opcional)</label>
+            <input id="o-reason" v-model="off.reason" maxlength="120" />
+          </div>
+          <button class="btn primary block" :disabled="busy">Agregar bloqueo</button>
+          <p class="muted small">Las citas ya agendadas en ese rango no se cancelan solas: revísalas en la agenda.</p>
+        </form>
+        <h3>Próximos bloqueos</h3>
+        <p v-if="!timeOffs.length" class="muted small">No hay bloqueos.</p>
+        <div v-for="t in timeOffs" :key="t.id" class="card">
+          <div class="row">
+            <div class="grow">
+              <strong>{{ t.professional?.name ?? 'Todo el local' }}</strong><span v-if="t.reason"> · {{ t.reason }}</span>
+              <div class="muted small">{{ dateTime(t.startsAt) }} → {{ dateTime(t.endsAt) }}</div>
+            </div>
+            <button class="btn sm danger" :disabled="busy" @click="removeOff(t.id)">Quitar</button>
+          </div>
+        </div>
+      </template>
+
+      <form v-if="section === 'settings'" class="card stack" @submit.prevent="saveSettings" @input="saved = false">
+        <div class="field">
+          <label for="t-name">Nombre del local</label>
+          <input id="t-name" v-model="settings.name" required minlength="2" maxlength="80" />
+        </div>
+        <div class="field">
+          <label for="t-address">Dirección (se envía al confirmar la cita)</label>
+          <input id="t-address" v-model="settings.address" maxlength="200" />
+        </div>
+        <h3>Reservas</h3>
+        <div class="field">
+          <label for="t-step">Ofrecer horarios cada</label>
+          <select id="t-step" v-model.number="settings.slotStepMinutes">
+            <option v-for="m in [5, 10, 15, 20, 30, 60]" :key="m" :value="m">{{ m }} minutos</option>
+          </select>
+        </div>
+        <div class="cols">
+          <div class="field">
+            <label for="t-min">Anticipación mínima (min)</label>
+            <input id="t-min" v-model.number="settings.minAdvanceMinutes" type="number" min="0" max="2880" required />
+          </div>
+          <div class="field" style="margin-top: 0">
+            <label for="t-max">Reservar hasta (días)</label>
+            <input id="t-max" v-model.number="settings.maxAdvanceDays" type="number" min="1" max="90" required />
+          </div>
+        </div>
+        <h3>Confirmación de asistencia</h3>
+        <div class="cols">
+          <div class="field">
+            <label for="t-rem">Preguntar (horas antes)</label>
+            <input id="t-rem" v-model.number="settings.reminderHoursBefore" type="number" min="1" max="72" required />
+          </div>
+          <div class="field" style="margin-top: 0">
+            <label for="t-timeout">Esperar respuesta (min)</label>
+            <input id="t-timeout" v-model.number="settings.confirmationTimeoutMinutes" type="number" min="15" max="2880" required />
+          </div>
+        </div>
+        <p class="muted small">Si el cliente no responde en ese tiempo, la cita se cancela y el cupo se ofrece a la fila de espera.</p>
+        <h3>Fila de espera</h3>
+        <div class="field">
+          <label for="t-wl">Tiempo para aceptar un cupo (min)</label>
+          <input id="t-wl" v-model.number="settings.waitlistOfferMinutes" type="number" min="5" max="240" required />
+        </div>
+        <p v-if="saved" class="chip ok" role="status">Cambios guardados</p>
+        <button class="btn primary block" :disabled="busy">Guardar ajustes</button>
+      </form>
+
+      <template v-if="section === 'staff'">
+        <div v-for="u in staff" :key="u.id" class="card">
+          <div class="row">
+            <div class="grow">
+              <strong>{{ u.name }}</strong>
+              <div class="muted small">{{ u.email }} · {{ u.role === 'OWNER' ? 'Dueño' : 'Personal' }}</div>
+            </div>
+            <span v-if="!u.active" class="chip">Inactivo</span>
+            <button v-if="u.role === 'STAFF'" class="btn sm" :disabled="busy" @click="toggleStaff(u)">{{ u.active ? 'Desactivar' : 'Activar' }}</button>
+          </div>
+        </div>
+        <h3>Nueva cuenta de personal</h3>
+        <form class="card stack" @submit.prevent="addStaff">
+          <div class="field"><label for="st-name">Nombre</label><input id="st-name" v-model="newStaff.name" required minlength="2" /></div>
+          <div class="field"><label for="st-email">Correo</label><input id="st-email" v-model="newStaff.email" type="email" required /></div>
+          <div class="field"><label for="st-pass">Contraseña (mínimo 8 caracteres)</label><input id="st-pass" v-model="newStaff.password" type="password" minlength="8" required autocomplete="new-password" /></div>
+          <button class="btn primary block" :disabled="busy">Crear cuenta</button>
+          <p class="muted small">El personal ve la agenda, los clientes y los chats, pero no puede cambiar servicios, equipo ni ajustes.</p>
+        </form>
+      </template>
+    </template>
+  </div>
+</template>
