@@ -12,6 +12,7 @@ export interface OutboxItem {
 /** Simulador local: no envía nada, imprime en consola y guarda los últimos mensajes. */
 @Injectable()
 export class ConsoleProvider implements WhatsAppProvider {
+  readonly name = 'console';
   private readonly logger = new Logger('WhatsApp(simulador)');
   readonly outbox: OutboxItem[] = [];
 

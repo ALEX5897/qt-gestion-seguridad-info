@@ -154,6 +154,20 @@ await step('un cliente no puede cancelar la cita de otro', async () => {
   assert.equal((await appointments(D1))[0].status, 'PENDING');
 });
 
+await step('el cliente puede escribir el número o el texto de una opción en vez de pulsarla', async () => {
+  const N = '593980000050';
+  await chat(N, { text: 'hola', name: 'Nico' });
+  assert.ok(ids(await chat(N, { text: '1' })).includes(`svc:${corte.id}`), '"1" = Agendar cita');
+  await chat(N, { text: 'hola' });
+  assert.match(textOf(await chat(N, { text: 'mis citas' })), /No tienes citas/);
+  await chat(N, { text: 'hola' });
+  assert.match(textOf(await chat(N, { text: '9' })), /No te entendí/, 'un número que no es opción no elige nada');
+  const { items } = { items: await ok('GET', `/conversations`, { token: owner }) };
+  const conv = items.find((c) => c.customer.phone === N);
+  const msgs = await ok('GET', `/conversations/${conv.customer.id}/messages`, { token: owner });
+  assert.ok(msgs.some((m) => m.pressed && m.text === 'Agendar cita'), 'el panel muestra la opción elegida');
+});
+
 console.log('\nBot: mis citas, reprogramar, cancelar');
 await step('mis citas muestra la cita y permite gestionarla', async () => {
   const mine = await chat(A, 'menu:mine');

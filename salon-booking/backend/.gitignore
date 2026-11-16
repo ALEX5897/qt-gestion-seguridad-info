@@ -3,3 +3,6 @@ dist
 coverage
 .env
 *.tsbuildinfo
+
+# Sesiones de WhatsApp del modo no oficial (credenciales de la cuenta vinculada)
+.wa-sessions

@@ -6,6 +6,8 @@ export interface Me {
   subscription: { serviceable: boolean; reason: string; plan: string | null; validUntil: string | null } | null;
   /** configured: la plataforma tiene IA; used/limit: respuestas del asistente este mes. */
   ai: { configured: boolean; used: number; limit: number } | null;
+  /** console = simulador · meta = oficial · baileys = no oficial (pruebas, código QR) */
+  whatsappProvider?: string;
 }
 
 const TOKEN_KEY = 'agenda.token';

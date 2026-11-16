@@ -12,6 +12,12 @@
 | Panel del dueño | Aplicación web instalable en el teléfono (PWA). |
 | Tareas automáticas | Un proceso cada minuto que **lee la base de datos** (sin Redis ni colas). Es más simple y gratis, y no pierde nada si el servidor se reinicia. Si el volumen crece, se puede migrar a BullMQ. |
 
+### Modo de pruebas no oficial
+
+Por decisión del proyecto existe un tercer proveedor, `baileys`, para probar con un WhatsApp real
+sin pasar por Meta. Se vincula desde el panel con QR o código. No debe usarse con números de
+clientes reales por el riesgo de bloqueo descrito abajo.
+
 ### Sobre las librerías no oficiales (Baileys, whatsapp-web.js)
 
 Son gratuitas pero violan los términos de WhatsApp y el número puede ser **bloqueado de forma

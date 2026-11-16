@@ -8,6 +8,7 @@ import { Channel, OutboundMessage, WhatsAppProvider } from '../whatsapp.types';
  */
 @Injectable()
 export class MetaCloudProvider implements WhatsAppProvider {
+  readonly name = 'meta';
   private readonly logger = new Logger(MetaCloudProvider.name);
   private readonly version = process.env.META_GRAPH_VERSION ?? 'v23.0';
   private readonly token = process.env.META_ACCESS_TOKEN ?? '';

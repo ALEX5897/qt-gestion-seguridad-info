@@ -1,4 +1,5 @@
 import {
+  Inject,
   Body,
   ConflictException,
   Controller,
@@ -15,6 +16,7 @@ import { AiUsageService } from '../ai/ai-usage.service';
 import { AssistantService } from '../ai/assistant.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantsService } from '../tenants/tenants.service';
+import { WHATSAPP_PROVIDER, WhatsAppProvider } from '../whatsapp/whatsapp.types';
 import { CreateStaffDto, SettingsDto, UpdateStaffDto } from './panel.dto';
 
 @Controller()
@@ -24,6 +26,7 @@ export class AccountController {
     private readonly tenants: TenantsService,
     private readonly aiUsage: AiUsageService,
     private readonly assistant: AssistantService,
+    @Inject(WHATSAPP_PROVIDER) private readonly whatsapp: WhatsAppProvider,
   ) {}
 
   /** Datos de la sesión: usuario, local, estado de la suscripción. */
@@ -53,6 +56,8 @@ export class AccountController {
       },
       // configured: la plataforma tiene la IA activada; used/limit: respuestas del asistente este mes.
       ai: { configured: this.assistant.configured, used: quota.used, limit: quota.limit },
+      // console = simulador · meta = oficial · baileys = no oficial (pruebas, se vincula con código QR)
+      whatsappProvider: this.whatsapp.name,
     };
   }
 

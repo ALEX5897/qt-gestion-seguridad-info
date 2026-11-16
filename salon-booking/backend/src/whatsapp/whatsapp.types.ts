@@ -61,6 +61,8 @@ export type OutboundMessage = InteractiveMessage | TemplateMessage;
  * la lógica del bot.
  */
 export interface WhatsAppProvider {
+  /** Identifica al proveedor: console (simulador), meta (oficial) o baileys (no oficial, pruebas). */
+  readonly name: string;
   send(channel: Channel, to: string, message: OutboundMessage): Promise<{ providerMessageId?: string }>;
 }
 

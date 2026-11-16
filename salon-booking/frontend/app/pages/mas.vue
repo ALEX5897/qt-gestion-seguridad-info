@@ -4,7 +4,7 @@ const api = useApi();
 const { me, isOwner, loadMe, logout } = useSession();
 const { dateTime, labelOf, isoDate, zonedToIso } = useDates();
 
-type Section = 'menu' | 'waitlist' | 'timeoff' | 'settings' | 'staff';
+type Section = 'menu' | 'waitlist' | 'timeoff' | 'settings' | 'staff' | 'whatsapp';
 const section = ref<Section>('menu');
 const busy = ref(false);
 const error = ref('');
@@ -21,6 +21,25 @@ const settings = reactive<Record<string, any>>({});
 // ───── Personal ─────
 const staff = ref<any[]>([]);
 const newStaff = reactive({ name: '', email: '', password: '' });
+// ───── Vinculación de WhatsApp (modo de pruebas con código QR) ─────
+const link = ref<{ state: string; qr: string | null; pairingCode: string | null; linkedNumber: string | null; error: string | null } | null>(null);
+const linkPhone = ref('');
+let linkTimer: ReturnType<typeof setInterval> | undefined;
+async function refreshLink() {
+  try {
+    link.value = await api('/whatsapp/link');
+  } catch {
+    /* se reintenta en el siguiente ciclo */
+  }
+}
+function watchLink() {
+  clearInterval(linkTimer);
+  linkTimer = setInterval(() => {
+    if (section.value !== 'whatsapp') return clearInterval(linkTimer);
+    refreshLink();
+  }, 3000);
+}
+onUnmounted(() => clearInterval(linkTimer));
 
 async function open(s: Section) {
   section.value = s;
@@ -41,6 +60,10 @@ async function open(s: Section) {
     settings.aiEnabled = t.aiEnabled;
   }
   if (s === 'staff') staff.value = await api('/staff');
+  if (s === 'whatsapp') {
+    await refreshLink();
+    watchLink();
+  }
 }
 
 async function run(fn: () => Promise<void>) {
@@ -92,8 +115,17 @@ const toggleStaff = (u: any) =>
     staff.value = await api('/staff');
   });
 
+const startLink = (withPhone: boolean) =>
+  run(async () => {
+    link.value = await api('/whatsapp/link', { method: 'POST', body: withPhone ? { phone: linkPhone.value } : {} });
+  });
+const unlink = () =>
+  run(async () => {
+    if (!confirm('¿Desvincular el WhatsApp del local? El bot dejará de responder hasta que vuelvas a escanear el código.')) return;
+    link.value = await api('/whatsapp/link', { method: 'DELETE' });
+  });
 const sub = computed(() => me.value?.subscription);
-const TITLES: Record<Section, string> = { menu: '', waitlist: 'Fila de espera', timeoff: 'Bloqueos de agenda', settings: 'Ajustes del local', staff: 'Personal' };
+const TITLES: Record<Section, string> = { menu: '', waitlist: 'Fila de espera', timeoff: 'Bloqueos de agenda', settings: 'Ajustes del local', staff: 'Personal', whatsapp: 'Conectar WhatsApp' };
 </script>
 
 <template>
@@ -123,6 +155,10 @@ const TITLES: Record<Section, string> = { menu: '', waitlist: 'Fila de espera', 
         </NuxtLink>
         <h3>Configuración</h3>
         <button class="card" @click="open('settings')"><strong>⚙️ Ajustes del local</strong><div class="muted small">Reservas, recordatorios, asistente con IA e invitaciones</div></button>
+        <button v-if="me?.whatsappProvider === 'baileys'" class="card" @click="open('whatsapp')">
+          <strong>📱 Conectar WhatsApp</strong>
+          <div class="muted small">Vincula el teléfono del local con un código QR (modo de pruebas)</div>
+        </button>
         <button class="card" @click="open('staff')"><strong>🧑‍💼 Personal</strong><div class="muted small">Cuentas para tu equipo</div></button>
       </template>
       <h3>Cuenta</h3>
@@ -260,6 +296,52 @@ const TITLES: Record<Section, string> = { menu: '', waitlist: 'Fila de espera', 
         <p v-if="saved" class="chip ok" role="status">Cambios guardados</p>
         <button class="btn primary block" :disabled="busy">Guardar ajustes</button>
       </form>
+
+      <div v-if="section === 'whatsapp'" class="stack">
+        <div class="banner" style="margin: 0">
+          Modo de pruebas con una conexión <strong>no oficial</strong>. WhatsApp puede bloquear el número que vincules:
+          usa un número de prueba, no el principal del negocio.
+        </div>
+        <div v-if="link?.state === 'connected'" class="card">
+          <span class="chip ok">Vinculado</span>
+          <p style="margin: 0.5rem 0 0">El bot está respondiendo los mensajes que llegan al <strong>+{{ link.linkedNumber }}</strong>.</p>
+          <p v-if="link.linkedNumber && link.linkedNumber !== me?.tenant?.whatsappNumber" class="muted small">
+            Es distinto del número registrado para el local (+{{ me?.tenant?.whatsappNumber }}); para pruebas no es problema.
+          </p>
+          <button class="btn danger block" style="margin-top: 0.6rem" :disabled="busy" @click="unlink">Desvincular</button>
+        </div>
+        <div v-else-if="link?.state === 'qr' && link.pairingCode" class="card" style="text-align: center">
+          <p><strong>Escribe este código en el teléfono del local</strong></p>
+          <p data-pairing style="font-size: 2rem; font-weight: 700; letter-spacing: 0.15em; margin: 0.5rem 0">{{ link.pairingCode }}</p>
+          <p class="muted small" style="text-align: left">
+            En ese teléfono: WhatsApp → Ajustes → Dispositivos vinculados → Vincular un dispositivo →
+            <strong>Vincular con el número de teléfono</strong>, y escribe el código. Caduca en pocos minutos.
+          </p>
+          <button class="btn block" :disabled="busy" @click="startLink(false)">Usar código QR en su lugar</button>
+        </div>
+        <div v-else-if="link?.state === 'qr'" class="card" style="text-align: center">
+          <p><strong>Escanea este código con el teléfono del local</strong></p>
+          <img :src="link.qr!" alt="Código QR para vincular WhatsApp" width="260" height="260" style="max-width: 100%; height: auto" />
+          <p class="muted small" style="text-align: left; margin-top: 0.5rem">
+            En el teléfono: WhatsApp → Ajustes → Dispositivos vinculados → Vincular un dispositivo. El código se renueva solo.
+          </p>
+        </div>
+        <div v-else-if="link?.state === 'connecting'" class="card"><p class="muted" style="margin: 0">Conectando con WhatsApp…</p></div>
+        <div v-else class="card stack">
+          <p>Al vincular, el bot responde a quien escriba a ese WhatsApp. En este modo no hay botones: el cliente contesta con el número de la opción.</p>
+          <p v-if="link?.error" class="error" role="alert">{{ link.error }}</p>
+          <form class="stack" @submit.prevent="startLink(true)">
+            <div class="field">
+              <label for="l-phone">Número de WhatsApp a vincular (con código de país)</label>
+              <input id="l-phone" v-model="linkPhone" type="tel" placeholder="593991234567" required />
+            </div>
+            <button class="btn primary block" :disabled="busy">Vincular con código</button>
+          </form>
+          <p class="muted small" style="margin: 0">Recomendado si estás usando este mismo teléfono.</p>
+          <button class="btn block" :disabled="busy" @click="startLink(false)">Vincular con código QR</button>
+          <p class="muted small" style="margin: 0">Si tienes el panel abierto en otra pantalla.</p>
+        </div>
+      </div>
 
       <template v-if="section === 'staff'">
         <div v-for="u in staff" :key="u.id" class="card">

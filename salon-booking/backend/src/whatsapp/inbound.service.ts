@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { BotContext, BotService } from './bot.service';
 import { MessagingService } from './messaging.service';
+import { optionsOf, resolveChoice } from './providers/baileys.format';
 import { Channel, InboundMessage } from './whatsapp.types';
 
 const UNAVAILABLE_TEXT =
@@ -36,6 +37,7 @@ export class InboundService {
       return;
     }
 
+    msg = await this.withTypedChoice(tenant.id, msg);
     if (!(await this.logInbound(tenant.id, msg))) return; // duplicado
 
     const { serviceable, reason } = await this.tenants.isServiceable(tenant);
@@ -102,6 +104,21 @@ export class InboundService {
       },
     });
     await this.messaging.send(tenant, msg.from, out.messages);
+  }
+
+  /**
+   * Si el cliente escribe el número de una opción ("2") o su texto ("mis citas") en vez
+   * de pulsar el botón, se trata como si lo hubiera pulsado. Con la sesión no oficial,
+   * donde no hay botones, es la única forma de elegir.
+   */
+  private async withTypedChoice(tenantId: number, msg: InboundMessage): Promise<InboundMessage> {
+    if (msg.replyId || !msg.text || msg.text.length > 40) return msg;
+    const last = await this.prisma.messageLog.findFirst({
+      where: { tenantId, customerPhone: msg.from, direction: 'OUT' },
+      orderBy: { id: 'desc' },
+    });
+    const replyId = resolveChoice(msg.text, optionsOf(last?.body));
+    return replyId ? { ...msg, replyId, text: undefined } : msg;
   }
 
   private async resolveTenant(channel: Channel): Promise<Tenant | null> {

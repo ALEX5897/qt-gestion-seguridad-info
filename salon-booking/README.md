@@ -112,6 +112,20 @@ curl -X POST localhost:3001/api/dev/automation/tick -H 'content-type: applicatio
   -d '{"now":"2026-12-01T15:00:00Z"}'
 ```
 
+## Probar con un WhatsApp real sin cuenta de Meta (modo no oficial)
+
+Con `WHATSAPP_PROVIDER=baileys` el dueño vincula un teléfono desde **Más → Conectar WhatsApp**, igual
+que WhatsApp Web: con un código QR o con un código de 8 caracteres que se escribe en el teléfono
+(útil si el panel está abierto en ese mismo teléfono). Desde ese momento el bot responde a quien
+escriba a ese número.
+
+- **Solo para pruebas.** Usa la librería no oficial Baileys: incumple los términos de WhatsApp y el
+  número puede ser bloqueado. Vincula un número de prueba, no el principal de un negocio.
+- En este modo no existen botones: el bot envía las opciones numeradas y el cliente responde con el
+  número (o el texto) de la opción.
+- Las credenciales de la sesión quedan en `backend/.wa-sessions/` (no se suben al repositorio).
+- El simulador (`/api/dev/...`) se apaga en este modo.
+
 Para conectarlo a WhatsApp de verdad con el número de prueba gratuito de Meta:
 [`docs/WHATSAPP_META.md`](docs/WHATSAPP_META.md).
 

@@ -59,7 +59,8 @@ export class MessagingService {
     template: TemplateSpec,
     now = new Date(),
   ) {
-    if (template.name && !(await this.insideWindow(tenant.id, to, now))) {
+    // Solo la API oficial exige plantillas; el simulador y la sesión no oficial envían el mensaje normal.
+    if (this.provider.name === 'meta' && template.name && !(await this.insideWindow(tenant.id, to, now))) {
       return this.send(tenant, to, [
         {
           type: 'template',
